@@ -1,0 +1,41 @@
+name: Daily streak keeper
+
+on:
+  schedule:
+    - cron: "0 17 * * *"   # 17:00 UTC = 10:00 PM Pakistan time
+  workflow_dispatch:        # manual run button
+
+permissions:
+  contents: write
+
+jobs:
+  keep-streak:
+    runs-on: ubuntu-latest
+    env:
+      GH_USER: hamzaahmad3006
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check today's contributions
+        id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TODAY=$(date -u +%Y-%m-%d)
+          COUNT=$(gh api graphql \
+            -f query='query($login:String!){ user(login:$login){ contributionsCollection{ contributionCalendar{ weeks{ contributionDays{ date contributionCount }}}}}}' \
+            -f login="$GH_USER" \
+            --jq "[.data.user.contributionsCollection.contributionCalendar.weeks[].contributionDays[] | select(.date==\"$TODAY\") | .contributionCount] | add // 0")
+          echo "Contributions today ($TODAY): $COUNT"
+          echo "count=$COUNT" >> "$GITHUB_OUTPUT"
+
+      - name: Commit only if nothing today
+        if: steps.check.outputs.count == '0'
+        run: |
+          git config user.name "hamzaahmad3006"
+          git config user.email "hamzaahmad3006@gmail.com"
+          mkdir -p logs
+          echo "- $(TZ=Asia/Karachi date '+%Y-%m-%d %H:%M PKT')" >> logs/activity.md
+          git add logs/activity.md
+          git commit -m "chore: daily log $(TZ=Asia/Karachi date +%Y-%m-%d)"
+          git push
